@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Profile = require('../models/Profile'); // Add this import
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -36,6 +37,22 @@ exports.register = async (req, res) => {
     });
     
     await newUser.save();
+
+    // Create profile for the new user
+    const newProfile = new Profile({
+      userId: newUser._id,
+      name,
+      phone,
+      email,
+      address: '', // Initialize empty fields
+      notifications: {
+        email: true,
+        inApp: true,
+        sms: true
+      }
+    });
+    
+    await newProfile.save();
 
     // Generate token
     const token = jwt.sign(
@@ -97,6 +114,24 @@ exports.login = async (req, res) => {
         success: false,
         message: "Invalid credentials" 
       });
+    }
+
+    // Check if profile exists, create if not
+    let profile = await Profile.findOne({ userId: user._id });
+    if (!profile) {
+      profile = new Profile({
+        userId: user._id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        address: '', // Initialize empty fields
+        notifications: {
+          email: true,
+          inApp: true,
+          sms: true
+        }
+      });
+      await profile.save();
     }
 
     // Generate token
@@ -164,6 +199,21 @@ exports.syncData = async (req, res) => {
           });
           await newUser.save();
 
+          // Create profile for the new user
+          const newProfile = new Profile({
+            userId: newUser._id,
+            name,
+            phone,
+            email,
+            address: '', // Initialize empty fields
+            notifications: {
+              email: true,
+              inApp: true,
+              sms: true
+            }
+          });
+          await newProfile.save();
+
           results.signups.push({
             email,
             status: 'success',
@@ -187,6 +237,24 @@ exports.syncData = async (req, res) => {
           const user = await User.findOne({ email, role });
           
           if (user) {
+            // Ensure profile exists
+            let profile = await Profile.findOne({ userId: user._id });
+            if (!profile) {
+              profile = new Profile({
+                userId: user._id,
+                name: user.name,
+                phone: user.phone,
+                email: user.email,
+                address: '', // Initialize empty fields
+                notifications: {
+                  email: true,
+                  inApp: true,
+                  sms: true
+                }
+              });
+              await profile.save();
+            }
+
             results.logins.push({
               email,
               status: 'success',

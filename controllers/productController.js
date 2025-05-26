@@ -68,9 +68,9 @@ exports.getRandomProducts = async (req, res) => {
       { $sample: { size: limit } },
       {
         $lookup: {
-          from: 'profiles',
+          from: 'users', // ✅ Changed from 'profiles'
           localField: 'vendorId',
-          foreignField: 'userId',
+          foreignField: '_id',
           as: 'vendor'
         }
       },
@@ -82,8 +82,8 @@ exports.getRandomProducts = async (req, res) => {
           price: 1,
           image: 1,
           vendorId: 1,
-          vendorName: '$vendor.shopName',
-          vendorAddress: '$vendor.address'
+          vendorName: '$vendor.name',
+          vendorPhone: '$vendor.phone'
         }
       }
     ]);
@@ -94,15 +94,16 @@ exports.getRandomProducts = async (req, res) => {
   }
 };
 
+
 // Get All Products from All Vendors (with vendor details)
 exports.getAllProducts = async (req, res) => {
   try {
     const products = await Product.aggregate([
       {
         $lookup: {
-          from: 'profiles',
+          from: 'users', // ✅ Changed from 'profiles'
           localField: 'vendorId',
-          foreignField: 'userId',
+          foreignField: '_id',
           as: 'vendor'
         }
       },
@@ -114,8 +115,9 @@ exports.getAllProducts = async (req, res) => {
           price: 1,
           image: 1,
           vendorId: 1,
-          vendorName: '$vendor.shopName',
-          vendorAddress: '$vendor.address'
+          vendorName: '$vendor.name',
+          vendorPhone: '$vendor.phone',
+          vendorRole: '$vendor.role' // optional
         }
       }
     ]);
@@ -126,6 +128,7 @@ exports.getAllProducts = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 };
+
 
 // Get All Products for Vendor
 exports.getVendorProducts = async (req, res) => {

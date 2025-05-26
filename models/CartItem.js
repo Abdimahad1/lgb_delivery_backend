@@ -28,11 +28,16 @@ const cartItemSchema = new mongoose.Schema({
   },
   quantity: {
     type: Number,
-    default: 1
+    default: 1,
+    min: 1
   },
   location: {
     type: String,
     required: true
+  },
+  vendorPhone: {
+    type: String,
+    default: ''
   },
   createdAt: {
     type: Date,
@@ -40,9 +45,7 @@ const cartItemSchema = new mongoose.Schema({
   }
 });
 
-// Add the compound index here (right before model creation)
+// Ensure each user can only have one cart item per product
 cartItemSchema.index({ userId: 1, productId: 1 }, { unique: true });
 
-const CartItem = mongoose.model('CartItem', cartItemSchema);
-
-module.exports = CartItem;
+module.exports = mongoose.model('CartItem', cartItemSchema);

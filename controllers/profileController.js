@@ -1,21 +1,46 @@
 const Profile = require('../models/Profile');
+const User = require('../models/User');
 const path = require('path');
 
 exports.getProfile = async (req, res) => {
   try {
-    const profile = await Profile.findOne({ userId: req.userId });
+    // Attempt to find the user's profile
+    let profile = await Profile.findOne({ userId: req.userId });
+
+    // If no profile exists, create one using user information
     if (!profile) {
-      return res.status(404).json({ success: false, message: 'Profile not found' });
+      const user = await User.findById(req.userId);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      // Create a new profile with user details
+      profile = new Profile({
+        userId: user._id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        address: '', // Initialize empty fields
+        notifications: {
+          email: true,
+          inApp: true,
+          sms: true
+        }
+      });
+
+      await profile.save();
     }
 
+    // Construct the full profile response
     const host = req.protocol + '://' + req.get('host');
     const fullProfile = {
       ...profile.toObject(),
       profileImage: profile.profileImage?.startsWith('http')
         ? profile.profileImage
-        : `${host}${profile.profileImage}`,
+        : profile.profileImage ? `${host}${profile.profileImage}` : null,
     };
 
+    // Send the profile data in the response
     res.status(200).json({ success: true, data: fullProfile });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Error fetching profile', error: err.message });
@@ -100,3 +125,5 @@ exports.uploadProfileImage = async (req, res) => {
     res.status(500).json({ success: false, message: 'Image upload failed', error: err.message });
   }
 };
+
+
