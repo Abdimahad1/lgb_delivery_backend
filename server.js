@@ -9,7 +9,7 @@ const authRoutes = require('./routes/authRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const productRoutes = require('./routes/productRoutes');
 const cartRoutes = require('./routes/cartRoutes');
-
+const paymentRoutes = require('./routes/paymentRoutes');
 
 
 // Initialize App
@@ -33,6 +33,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api', paymentRoutes);
 
 
 // ✅ Database Connection & Start Server

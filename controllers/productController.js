@@ -3,9 +3,7 @@ const Uri = require('uri-js');
 
 // Helper function to validate image URLs
 function isValidImageUrl(url) {
-  // Special case for Google image URLs
   if (url.includes('gstatic.com')) return true;
-  
   try {
     const parsed = Uri.parse(url);
     return parsed.scheme && (parsed.scheme === 'http' || parsed.scheme === 'https');
@@ -20,17 +18,14 @@ exports.createProduct = async (req, res) => {
     const { name, description, quantity, price, image } = req.body;
 
     if (!image) {
-      return res.status(400).json({
-        success: false,
-        message: 'Image is required'
-      });
+      return res.status(400).json({ success: false, message: 'Image is required' });
     }
 
     const numericPrice = parseFloat(price);
-    if (isNaN(numericPrice) || numericPrice < 0.25) {
+    if (isNaN(numericPrice) || numericPrice < 0.001) {
       return res.status(400).json({
         success: false,
-        message: 'Price must be at least 0.25 and valid'
+        message: 'Price must be at least 0.001 and valid'
       });
     }
 
@@ -52,15 +47,11 @@ exports.createProduct = async (req, res) => {
     });
   } catch (err) {
     console.error('Error creating product:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: err.message
-    });
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 };
 
-// Get Random Products
+// Get Random Products ✅ UPDATED
 exports.getRandomProducts = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 7;
@@ -68,13 +59,22 @@ exports.getRandomProducts = async (req, res) => {
       { $sample: { size: limit } },
       {
         $lookup: {
-          from: 'users', // ✅ Changed from 'profiles'
+          from: 'users',
           localField: 'vendorId',
           foreignField: '_id',
-          as: 'vendor'
+          as: 'vendorUser'
         }
       },
-      { $unwind: '$vendor' },
+      { $unwind: '$vendorUser' },
+      {
+        $lookup: {
+          from: 'profiles',
+          localField: 'vendorId',
+          foreignField: 'userId',
+          as: 'vendorProfile'
+        }
+      },
+      { $unwind: { path: '$vendorProfile', preserveNullAndEmptyArrays: true } },
       {
         $project: {
           name: 1,
@@ -82,8 +82,9 @@ exports.getRandomProducts = async (req, res) => {
           price: 1,
           image: 1,
           vendorId: 1,
-          vendorName: '$vendor.name',
-          vendorPhone: '$vendor.phone'
+          vendorName: '$vendorUser.name',
+          vendorPhone: '$vendorUser.phone',
+          vendorAddress: '$vendorProfile.address'
         }
       }
     ]);
@@ -94,20 +95,28 @@ exports.getRandomProducts = async (req, res) => {
   }
 };
 
-
-// Get All Products from All Vendors (with vendor details)
+// Get All Products ✅ UPDATED
 exports.getAllProducts = async (req, res) => {
   try {
     const products = await Product.aggregate([
       {
         $lookup: {
-          from: 'users', // ✅ Changed from 'profiles'
+          from: 'users',
           localField: 'vendorId',
           foreignField: '_id',
-          as: 'vendor'
+          as: 'vendorUser'
         }
       },
-      { $unwind: '$vendor' },
+      { $unwind: '$vendorUser' },
+      {
+        $lookup: {
+          from: 'profiles',
+          localField: 'vendorId',
+          foreignField: 'userId',
+          as: 'vendorProfile'
+        }
+      },
+      { $unwind: { path: '$vendorProfile', preserveNullAndEmptyArrays: true } },
       {
         $project: {
           name: 1,
@@ -115,9 +124,10 @@ exports.getAllProducts = async (req, res) => {
           price: 1,
           image: 1,
           vendorId: 1,
-          vendorName: '$vendor.name',
-          vendorPhone: '$vendor.phone',
-          vendorRole: '$vendor.role' // optional
+          vendorName: '$vendorUser.name',
+          vendorPhone: '$vendorUser.phone',
+          vendorRole: '$vendorUser.role',
+          vendorAddress: '$vendorProfile.address'
         }
       }
     ]);
@@ -129,23 +139,13 @@ exports.getAllProducts = async (req, res) => {
   }
 };
 
-
-// Get All Products for Vendor
+// Get Vendor's Products
 exports.getVendorProducts = async (req, res) => {
   try {
     const products = await Product.find({ vendorId: req.userId });
-
-    res.status(200).json({
-      success: true,
-      count: products.length,
-      data: products
-    });
+    res.status(200).json({ success: true, count: products.length, data: products });
   } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: err.message
-    });
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 };
 
@@ -156,10 +156,10 @@ exports.updateProduct = async (req, res) => {
 
     if (price !== undefined) {
       const numericPrice = parseFloat(price);
-      if (isNaN(numericPrice) || numericPrice < 0.25) {
+      if (isNaN(numericPrice) || numericPrice < 0.001) {
         return res.status(400).json({
           success: false,
-          message: 'Price must be at least 0.25 and valid'
+          message: 'Price must be at least 0.001 and valid'
         });
       }
       req.body.price = numericPrice;
@@ -184,27 +184,12 @@ exports.updateProduct = async (req, res) => {
 // Delete Product
 exports.deleteProduct = async (req, res) => {
   try {
-    const product = await Product.findOneAndDelete({
-      _id: req.params.id,
-      vendorId: req.userId
-    });
-
+    const product = await Product.findOneAndDelete({ _id: req.params.id, vendorId: req.userId });
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
-
-    res.status(200).json({
-      success: true,
-      message: 'Product deleted'
-    });
+    res.status(200).json({ success: true, message: 'Product deleted' });
   } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: err.message
-    });
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 };

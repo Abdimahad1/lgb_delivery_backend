@@ -23,15 +23,15 @@ const productSchema = new mongoose.Schema({
   price: {
     type: Number,
     required: true,
-    min: [0, 'Price cannot be negative']
+    min: [0.001, 'Price must be at least 0.001']
   },
   image: {
     type: String,
     validate: {
-      validator: function(v) {
+      validator: function (v) {
         return v.startsWith('data:image/') || 
                v.startsWith('http://') || 
-               v.startsWith('https://') ||
+               v.startsWith('https://') || 
                v.includes('gstatic.com');
       },
       message: props => `${props.value} is not a valid image URL or Base64 image!`
@@ -42,5 +42,6 @@ const productSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
 
 module.exports = mongoose.model('Product', productSchema);
