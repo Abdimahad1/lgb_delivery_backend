@@ -21,6 +21,7 @@ const authMiddleware = (req, res, next) => {
       message: 'Authorization header must start with Bearer',
     });
   }
+  
 
   const token = authHeader.split(' ')[1];
   

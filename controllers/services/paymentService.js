@@ -1,6 +1,5 @@
 const axios = require('axios');
 
-// ✅ Format phone number for WaafiPay (adds 252, strips leading 0s)
 const formatPhone = (phone) => {
   if (!phone.startsWith("252")) {
     return `252${phone.replace(/^0+/, "")}`;
@@ -8,7 +7,6 @@ const formatPhone = (phone) => {
   return phone;
 };
 
-// ✅ Build the WaafiPay API payload
 const buildPayload = ({ phone, amount, invoiceId, description }) => {
   const formattedAmount = parseFloat(amount).toFixed(2);
   return {
@@ -23,7 +21,7 @@ const buildPayload = ({ phone, amount, invoiceId, description }) => {
       apiKey: process.env.API_KEY,
       paymentMethod: "MWALLET_ACCOUNT",
       payerInfo: {
-        accountNo: phone,
+        accountNo: formatPhone(phone),
       },
       transactionInfo: {
         referenceId: `ref-${Date.now()}`,
@@ -36,41 +34,59 @@ const buildPayload = ({ phone, amount, invoiceId, description }) => {
   };
 };
 
-// ✅ Primary method to send payment request
 const payByWaafiPay = async (paymentData) => {
-  const formattedPhone = formatPhone(paymentData.phone);
-  const payload = buildPayload({
-    phone: formattedPhone,
-    amount: paymentData.amount,
-    invoiceId: paymentData.invoiceId,
-    description: paymentData.description,
-  });
+  const payload = buildPayload(paymentData);
+  console.log("🔄 Sending payment payload:", JSON.stringify(payload, null, 2));
 
-  console.log("🔄 Sending WaafiPay payload:", JSON.stringify(payload, null, 2));
-
-  const response = await axios.post(
-    process.env.PAYMENT_API_URL,
-    payload,
-    {
-      headers: { 'Content-Type': 'application/json' },
-    }
-  );
-
-  return response.data;
-};
-
-// ✅ Retry wrapper with exponential backoff
-const retryPayment = async (paymentData, retries = 2, delay = 1000) => {
   try {
-    return await payByWaafiPay(paymentData);
+    const response = await axios.post(
+      process.env.PAYMENT_API_URL,
+      payload,
+      {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000, // 15 seconds timeout
+      }
+    );
+
+    console.log("✅ Payment API response:", JSON.stringify(response.data, null, 2));
+    return response.data;
+
   } catch (error) {
-    if (retries <= 0) throw error;
-
-    console.warn(`⚠️ Retrying payment... Attempts left: ${retries}`);
-    await new Promise((res) => setTimeout(res, delay));
-
-    return retryPayment(paymentData, retries - 1, delay * 2);
+    console.error("❌ Payment API error:", {
+      message: error.message,
+      response: error.response?.data,
+      stack: error.stack
+    });
+    throw error;
   }
 };
 
-module.exports = { payByWaafiPay, retryPayment };
+const retryPayment = async (paymentData, retries = 3, delay = 1000) => {
+  try {
+    return await payByWaafiPay(paymentData);
+  } catch (error) {
+    const statusCode = error.response?.status;
+
+    // Don't retry on client errors (4xx)
+    if (statusCode && statusCode >= 400 && statusCode < 500) {
+      console.warn(`⛔ No retry for client error (${statusCode})`);
+      throw error;
+    }
+
+    if (retries <= 0) {
+      console.warn("❌ No retries left. Failing payment.");
+      throw error;
+    }
+
+    const nextDelay = delay * 2;
+    console.warn(`⚠️ Retrying payment (${retries} attempts left) in ${nextDelay}ms...`);
+    await new Promise(resolve => setTimeout(resolve, nextDelay));
+
+    return retryPayment(paymentData, retries - 1, nextDelay);
+  }
+};
+
+module.exports = {
+  payByWaafiPay,
+  retryPayment,
+};

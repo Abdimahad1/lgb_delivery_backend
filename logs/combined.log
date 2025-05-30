@@ -1,0 +1,28 @@
+{
+  "env": "development",
+  "level": "info",
+  "message": "Initiating payment for invoice INV-1748595943442, amount: 0.01",
+  "service": "payment-service",
+  "timestamp": "2025-05-30 12:05:45"
+}
+{
+  "env": "development",
+  "error": "Payment validation failed: accountNo: 613797852 is not a valid Somali phone number!",
+  "level": "error",
+  "message": "Payment processing failed:",
+  "requestBody": {
+    "accountNo": "613797852",
+    "amount": "0.01",
+    "description": "Payment for 3KG",
+    "invoiceId": "INV-1748595943442",
+    "productId": "6835a581decbfda4fd50841b",
+    "productImage": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS1p_mCeOsmIAOg9fqdsm4KyHZqm2UzFnkWpg&s",
+    "productPrice": 0.01,
+    "productTitle": "3KG",
+    "userLocation": "Digfer Road طريق دكفر, Guryaha Ruushka, Muqdisho مقديشو, Banaadir بنادر, Soomaaliya الصومال",
+    "vendorId": "68359be6ea7c4582d1ea862e"
+  },
+  "service": "payment-service",
+  "stack": "ValidationError: Payment validation failed: accountNo: 613797852 is not a valid Somali phone number!\n    at Document.invalidate (C:\\Users\\Hp\\Desktop\\lgp-delivery-backend\\node_modules\\mongoose\\lib\\document.js:3343:32)\n    at C:\\Users\\Hp\\Desktop\\lgp-delivery-backend\\node_modules\\mongoose\\lib\\document.js:3104:17\n    at C:\\Users\\Hp\\Desktop\\lgp-delivery-backend\\node_modules\\mongoose\\lib\\schemaType.js:1407:9\n    at process.processTicksAndRejections (node:internal/process/task_queues:77:11)",
+  "timestamp": "2025-05-30 12:05:56"
+}
