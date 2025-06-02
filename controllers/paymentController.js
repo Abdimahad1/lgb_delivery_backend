@@ -1,5 +1,6 @@
 const Payment = require('../models/Payment');
-const { retryPayment } = require('./services/paymentService');
+const AssignedTask = require('../models/AssignedTask'); // ✅ Make sure this is imported
+const { payByWaafiPay } = require('./services/paymentService');
 
 // 🟢 Process a payment
 exports.processPayment = async (req, res) => {
@@ -20,22 +21,25 @@ exports.processPayment = async (req, res) => {
     const userId = req.userId;
 
     if (!accountNo || !amount || !invoiceId || !description) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields',
-      });
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      return res.status(400).json({
+      return res.status(400).json({ success: false, message: 'Amount must be greater than 0' });
+    }
+
+    const duplicate = await Payment.findOne({ userId, invoiceId }).lean();
+    if (duplicate) {
+      return res.status(409).json({
         success: false,
-        message: 'Amount must be greater than 0',
+        message: 'Duplicate invoice payment already exists',
+        data: duplicate,
       });
     }
 
-    console.log('🔁 Attempting payment processing...');
-    const result = await retryPayment({
+    console.log('🔁 Processing payment...');
+    const result = await payByWaafiPay({
       phone: accountNo,
       amount: parsedAmount,
       invoiceId,
@@ -49,13 +53,11 @@ exports.processPayment = async (req, res) => {
     const transactionStatus = result?.transactionInfo?.status?.toUpperCase() || '';
     const responseMsg = String(result?.responseMsg || result?.responseMessage || '').toUpperCase();
 
-    const isSuccess =
+    const isPaymentSuccessful =
       code === '0' ||
       statusCode === '2001' ||
       transactionStatus === 'SUCCESS' ||
       responseMsg === 'RCS_SUCCESS';
-
-    console.log('✅ Determined success:', isSuccess);
 
     const paymentData = {
       userId,
@@ -70,23 +72,22 @@ exports.processPayment = async (req, res) => {
       productImage,
       productPrice,
       userLocation,
-      status: isSuccess ? 'success' : 'failed',
+      status: isPaymentSuccessful ? 'success' : 'failed',
       waafiResponse: result,
-      timestamp: new Date(), // ✅ Required for sorting and display
+      timestamp: new Date(),
     };
 
     const payment = await Payment.create(paymentData);
-    console.log('📦 Payment saved with status:', payment.status);
 
-    return res.status(isSuccess ? 200 : 400).json({
-      success: isSuccess,
-      message: isSuccess
+    return res.status(isPaymentSuccessful ? 200 : 400).json({
+      success: isPaymentSuccessful,
+      message: isPaymentSuccessful
         ? 'Payment successful'
         : result.responseMsg || result.responseMessage || 'Payment failed',
       data: payment,
     });
   } catch (err) {
-    console.error('❌ Payment error:', err.response?.data || err.message);
+    console.error('❌ Payment processing error:', err.response?.data || err.message);
     return res.status(500).json({
       success: false,
       message: 'Payment processing failed',
@@ -98,18 +99,15 @@ exports.processPayment = async (req, res) => {
 // 🟢 Get vendor-specific successful payments
 exports.getVendorPayments = async (req, res) => {
   try {
-    const vendorId = req.userId; // Auth middleware sets this
+    const vendorId = req.userId;
     const transactions = await Payment.find({
       vendorId,
       status: 'success',
-    }).sort({ timestamp: -1 });
+    }).sort({ timestamp: -1 }).lean();
 
-    return res.json({
-      success: true,
-      transactions,
-    });
+    return res.json({ success: true, transactions });
   } catch (err) {
-    console.error('❌ Vendor payments fetch error:', err.message);
+    console.error('❌ Vendor payment fetch error:', err.message);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch vendor payments',
@@ -118,20 +116,58 @@ exports.getVendorPayments = async (req, res) => {
   }
 };
 
-// 🟢 Get all payment history (if needed for admin or user)
+// 🟢 Get all payments (admin or user)
 exports.getAllPaymentHistory = async (req, res) => {
   try {
-    const transactions = await Payment.find().sort({ timestamp: -1 });
-    return res.json({
-      success: true,
-      transactions,
-    });
+    const transactions = await Payment.find().sort({ timestamp: -1 }).lean();
+    return res.json({ success: true, transactions });
   } catch (err) {
-    console.error('❌ Payment history fetch error:', err.message);
+    console.error('❌ Payment history error:', err.message);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch payment history',
       error: err.message,
+    });
+  }
+};
+
+// 🆕 Get vendor orders enriched with delivery task status
+exports.getVendorOrdersWithDeliveryStatus = async (req, res) => {
+  try {
+    const vendorId = req.userId;
+
+    // 🧠 Parallelize fetching
+    const [transactions, tasks] = await Promise.all([
+      Payment.find({ vendorId }).sort({ createdAt: -1 }).lean(),
+      AssignedTask.find().lean(),
+    ]);
+
+    const orderIds = transactions.map(tx => tx._id.toString());
+    const taskMap = {};
+
+    tasks.forEach(task => {
+      const id = task.orderId?.toString();
+      if (id && orderIds.includes(id)) {
+        taskMap[id] = task.status;
+      }
+    });
+
+    const enriched = transactions
+      .filter(tx => {
+        const status = taskMap[tx._id.toString()];
+        return status !== 'Rejected'; // ⛔ Filter out
+      })
+      .map(tx => ({
+        ...tx,
+        deliveryStatus: taskMap[tx._id.toString()] || 'Pending',
+      }));
+
+    return res.status(200).json({ success: true, transactions: enriched });
+  } catch (err) {
+    console.error("❌ Error fetching vendor orders with delivery status:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch vendor orders with delivery info',
     });
   }
 };

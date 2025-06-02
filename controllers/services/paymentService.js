@@ -1,5 +1,8 @@
 const axios = require('axios');
 
+/**
+ * Format the user's phone number to start with '252'
+ */
 const formatPhone = (phone) => {
   if (!phone.startsWith("252")) {
     return `252${phone.replace(/^0+/, "")}`;
@@ -7,6 +10,9 @@ const formatPhone = (phone) => {
   return phone;
 };
 
+/**
+ * Build the payload required by WaafiPay API
+ */
 const buildPayload = ({ phone, amount, invoiceId, description }) => {
   const formattedAmount = parseFloat(amount).toFixed(2);
   return {
@@ -34,8 +40,13 @@ const buildPayload = ({ phone, amount, invoiceId, description }) => {
   };
 };
 
+/**
+ * Make a one-time payment request to WaafiPay
+ * No retries — response is final
+ */
 const payByWaafiPay = async (paymentData) => {
   const payload = buildPayload(paymentData);
+
   console.log("🔄 Sending payment payload:", JSON.stringify(payload, null, 2));
 
   try {
@@ -44,7 +55,7 @@ const payByWaafiPay = async (paymentData) => {
       payload,
       {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 15000, // 15 seconds timeout
+        timeout: 60000, // ⏱️ 60 seconds only
       }
     );
 
@@ -55,38 +66,12 @@ const payByWaafiPay = async (paymentData) => {
     console.error("❌ Payment API error:", {
       message: error.message,
       response: error.response?.data,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
 };
 
-const retryPayment = async (paymentData, retries = 3, delay = 1000) => {
-  try {
-    return await payByWaafiPay(paymentData);
-  } catch (error) {
-    const statusCode = error.response?.status;
-
-    // Don't retry on client errors (4xx)
-    if (statusCode && statusCode >= 400 && statusCode < 500) {
-      console.warn(`⛔ No retry for client error (${statusCode})`);
-      throw error;
-    }
-
-    if (retries <= 0) {
-      console.warn("❌ No retries left. Failing payment.");
-      throw error;
-    }
-
-    const nextDelay = delay * 2;
-    console.warn(`⚠️ Retrying payment (${retries} attempts left) in ${nextDelay}ms...`);
-    await new Promise(resolve => setTimeout(resolve, nextDelay));
-
-    return retryPayment(paymentData, retries - 1, nextDelay);
-  }
-};
-
 module.exports = {
   payByWaafiPay,
-  retryPayment,
 };

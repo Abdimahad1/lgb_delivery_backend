@@ -11,6 +11,7 @@ const productRoutes = require('./routes/productRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const paymentRoutes = require('./routes/paymentRoutes'); 
 const taskRoutes = require('./routes/taskRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 // ✅ Initialize App
 const app = express();
@@ -24,7 +25,7 @@ app.use(cors({
 // ✅ Middleware
 app.use(express.json());
 
-// ✅ Serve uploaded images as static files (profile, product, etc.)
+// ✅ Serve uploaded images (stored as /uploads/filename.jpg)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ✅ Mount Routes
@@ -32,9 +33,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
-app.use('/api/payment', paymentRoutes); // ⬅️ Now it matches Flutter call
-app.use('/api/tasks', require('./routes/taskRoutes'));
-
+app.use('/api/payment', paymentRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // ✅ Connect to MongoDB and start server
 mongoose.connect(process.env.MONGO_URI)

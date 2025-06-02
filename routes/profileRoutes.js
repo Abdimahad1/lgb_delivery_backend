@@ -8,25 +8,27 @@ const {
 } = require('../controllers/profileController');
 const authMiddleware = require('../middlewares/authMiddleware');
 const Profile = require('../models/Profile');
-const User = require('../models/User'); // ✅ Make sure this is included
+const User = require('../models/User');
 
 const router = express.Router();
 
+// ✅ Setup Multer for image uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
 });
 const upload = multer({ storage });
 
+// ✅ Profile CRUD routes
 router.get('/', authMiddleware, getProfile);
 router.put('/', authMiddleware, updateProfile);
 router.patch('/', authMiddleware, patchProfile);
 router.post('/upload', authMiddleware, upload.single('image'), uploadProfileImage);
 
-// ✅ Get all vendors (already in place)
+// ✅ Get all vendors with image URL formatting
 router.get('/all-vendors', authMiddleware, async (req, res) => {
   try {
-    const host = req.protocol + '://' + req.get('host');
+    const host = `${req.protocol}://${req.get('host')}`;
     const vendors = await Profile.find({
       shopName: { $exists: true, $ne: '' },
       profileImage: { $exists: true },
@@ -37,7 +39,7 @@ router.get('/all-vendors', authMiddleware, async (req, res) => {
       name: v.name,
       shopName: v.shopName,
       address: v.address,
-      profileImage: v.profileImage.startsWith('http')
+      profileImage: v.profileImage?.startsWith('http')
         ? v.profileImage
         : `${host}${v.profileImage}`,
     }));
@@ -52,16 +54,17 @@ router.get('/all-vendors', authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ NEW: Get all DeliveryPersons
+// ✅ Get all delivery persons with profile info
 router.get('/all-delivery-persons', authMiddleware, async (req, res) => {
   try {
     const users = await User.find({ role: 'DeliveryPerson' }).select('name phone email role _id');
+    const profiles = await Profile.find({ userId: { $in: users.map(u => u._id) } });
 
-    const deliveryProfiles = await Profile.find({ userId: { $in: users.map(u => u._id) } });
-    const host = req.protocol + '://' + req.get('host');
+    const host = `${req.protocol}://${req.get('host')}`;
 
     const formatted = users.map(user => {
-      const profile = deliveryProfiles.find(p => p.userId.toString() === user._id.toString());
+      const profile = profiles.find(p => p.userId.toString() === user._id.toString());
+
       return {
         userId: user._id,
         name: user.name,
@@ -70,7 +73,7 @@ router.get('/all-delivery-persons', authMiddleware, async (req, res) => {
         role: user.role,
         address: profile?.address || '',
         profileImage: profile?.profileImage?.startsWith('http')
-          ? profile?.profileImage
+          ? profile.profileImage
           : profile?.profileImage
           ? `${host}${profile.profileImage}`
           : null,

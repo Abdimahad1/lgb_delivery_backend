@@ -4,48 +4,49 @@ const path = require('path');
 
 exports.getProfile = async (req, res) => {
   try {
-    // Attempt to find the user's profile
     let profile = await Profile.findOne({ userId: req.userId });
 
-    // If no profile exists, create one using user information
     if (!profile) {
       const user = await User.findById(req.userId);
       if (!user) {
         return res.status(404).json({ success: false, message: 'User not found' });
       }
 
-      // Create a new profile with user details
       profile = new Profile({
         userId: user._id,
         name: user.name,
         phone: user.phone,
         email: user.email,
-        address: '', // Initialize empty fields
+        address: '',
         notifications: {
           email: true,
           inApp: true,
-          sms: true
+          sms: true,
         }
       });
 
       await profile.save();
     }
 
-    // Construct the full profile response
-    const host = req.protocol + '://' + req.get('host');
+    // ✅ Force HTTPS in host
+    const rawHost = req.get('host');
+    const host = `https://${rawHost.replace(/^http:\/\//, '')}`;
+
     const fullProfile = {
       ...profile.toObject(),
       profileImage: profile.profileImage?.startsWith('http')
         ? profile.profileImage
-        : profile.profileImage ? `${host}${profile.profileImage}` : null,
+        : profile.profileImage
+        ? `${host}${profile.profileImage}`
+        : null,
     };
 
-    // Send the profile data in the response
     res.status(200).json({ success: true, data: fullProfile });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Error fetching profile', error: err.message });
   }
 };
+
 
 exports.updateProfile = async (req, res) => {
   try {
@@ -107,23 +108,23 @@ exports.uploadProfileImage = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No image uploaded' });
     }
 
-    const host = req.protocol + '://' + req.get('host');
-    const imageUrl = `${host}/uploads/${req.file.filename}`;
+    const relativePath = `/uploads/${req.file.filename}`; // ✅ only the path stored
 
     const updated = await Profile.findOneAndUpdate(
       { userId: req.userId },
-      { profileImage: imageUrl },
+      { profileImage: relativePath },
       { new: true, upsert: true }
     );
+
+    // Optional: You can still include the full URL in the response for frontend use
+    const fullUrl = `${req.protocol}://${req.get('host')}${relativePath}`;
 
     res.status(200).json({
       success: true,
       message: 'Image uploaded',
-      imageUrl: imageUrl
+      imageUrl: fullUrl // useful for preview, but not stored
     });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Image upload failed', error: err.message });
   }
 };
-
-
