@@ -25,13 +25,19 @@ exports.sendOTP = async (req, res) => {
   });
 
   try {
+    console.log(`📧 Sending OTP to email: ${email}`); // Debugging email
+
     const user = await User.findOne({ email });
     if (!user) {
+      console.log("❌ User not found for email:", email); // Debugging user lookup
       return res.status(404).json({ message: "User not found" });
     }
 
     const otp = generateOTP();
-    const otpExpire = new Date(Date.now() + 10 * 60 * 1000);
+    const otpExpire = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
+
+    console.log("🔒 OTP generated:", otp); // Debugging OTP generation
+    console.log("⏰ OTP expiry time:", otpExpire); // Debugging OTP expiry time
 
     user.otp = otp;
     user.otpExpire = otpExpire;
@@ -58,8 +64,11 @@ exports.sendOTP = async (req, res) => {
     };
 
     await transporter.sendMail(mailOptions);
+    console.log("✅ OTP sent successfully to email:", email); // Debugging email sent
+
     res.status(200).json({ message: "OTP sent to your email" });
   } catch (err) {
+    console.error("❌ Error in sending OTP:", err); // Debugging error
     res.status(500).json({ message: err.message });
   }
 };
@@ -68,17 +77,21 @@ exports.sendOTP = async (req, res) => {
 exports.verifyOTP = async (req, res) => {
   const { email, otp } = req.body;
 
+  console.log(`🔍 Verifying OTP for email: ${email} with OTP: ${otp}`); // Debugging OTP verification
+
   try {
-    const user = await User.findOne({ 
+    const user = await User.findOne({
       email,
-      otpExpire: { $gt: Date.now() } 
+      otpExpire: { $gt: Date.now() }
     });
 
     if (!user) {
+      console.log("❌ Invalid OTP or OTP expired for email:", email); // Debugging user check
       return res.status(400).json({ message: "Invalid OTP or OTP expired" });
     }
 
     if (user.otp !== otp) {
+      console.log("❌ OTP does not match for email:", email); // Debugging OTP mismatch
       return res.status(400).json({ message: "Invalid OTP" });
     }
 
@@ -90,12 +103,15 @@ exports.verifyOTP = async (req, res) => {
     user.otpExpire = undefined;
     await user.save();
 
-    res.status(200).json({ 
+    console.log("🔑 Reset token generated:", resetToken); // Debugging reset token generation
+
+    res.status(200).json({
       message: "OTP verified successfully",
-      resetToken 
+      resetToken
     });
 
   } catch (err) {
+    console.error("❌ Error in verifying OTP:", err); // Debugging error
     res.status(500).json({ message: err.message });
   }
 };
@@ -104,21 +120,26 @@ exports.verifyOTP = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   const { resetToken, newPassword, confirmPassword } = req.body;
 
+  console.log(`🔑 Resetting password with resetToken: ${resetToken}`); // Debugging reset process
+
   try {
     if (newPassword.length < 6) {
+      console.log("❌ Password must be at least 6 characters"); // Debugging password length
       return res.status(400).json({ message: "Password must be at least 6 characters" });
     }
 
     if (newPassword !== confirmPassword) {
+      console.log("❌ Passwords do not match"); // Debugging password mismatch
       return res.status(400).json({ message: "Passwords do not match" });
     }
 
-    const user = await User.findOne({ 
+    const user = await User.findOne({
       resetPasswordToken: resetToken,
-      resetPasswordExpire: { $gt: Date.now() } 
+      resetPasswordExpire: { $gt: Date.now() }
     });
 
     if (!user) {
+      console.log("❌ Invalid or expired reset token"); // Debugging token expiration or invalidity
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
@@ -129,9 +150,12 @@ exports.resetPassword = async (req, res) => {
     user.resetPasswordExpire = undefined;
     await user.save();
 
+    console.log("✅ Password reset successfully for email:", user.email); // Debugging successful password reset
+
     res.status(200).json({ message: "Password reset successfully" });
 
   } catch (err) {
+    console.error("❌ Error in resetting password:", err); // Debugging error
     res.status(500).json({ message: err.message });
   }
 };
