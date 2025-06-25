@@ -199,6 +199,8 @@ exports.syncData = async (req, res) => {
           });
           await newUser.save();
 
+          
+
           // Create profile for the new user
           const newProfile = new Profile({
             userId: newUser._id,
