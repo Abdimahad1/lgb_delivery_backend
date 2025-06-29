@@ -8,36 +8,24 @@ const nodemailer = require('nodemailer');
 const OTP_EXPIRY_MINUTES = 10;
 const PASSWORD_RESET_EXPIRY_MINUTES = 10;
 
-// Helper function to generate OTP
-const generateOTP = () => {
-  return crypto.randomInt(100000, 999999).toString();
-};
+// Helpers
+const generateOTP = () => crypto.randomInt(100000, 999999).toString();
+const log = (msg) => console.log(`[${new Date().toISOString()}] ${msg}`);
+const getExpiryTime = (minutes) => new Date(Date.now() + minutes * 60 * 1000);
 
-// Helper function to log with timestamp
-const log = (message) => {
-  console.log(`[${new Date().toISOString()}] ${message}`);
-};
-
-// Helper function to calculate expiry time
-const getExpiryTime = (minutes) => {
-  return new Date(Date.now() + minutes * 60 * 1000);
-};
-
-// Send OTP to email
+// Send OTP
 exports.sendOTP = async (req, res) => {
-  const { email } = req.body;
+  const email = req.body.email?.trim().toLowerCase();
 
   log(`📧 Starting OTP process for email: ${email}`);
-  log(`⏰ Current server time: ${new Date()}`);
+  log(`⏰ Server time: ${new Date()}`);
   log(`🌐 Server timezone offset: ${new Date().getTimezoneOffset()} minutes`);
 
-  // Validate email format
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     log(`❌ Invalid email format: ${email}`);
     return res.status(400).json({ message: "Please provide a valid email address" });
   }
 
-  // Create transporter
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: process.env.SMTP_PORT,
@@ -49,9 +37,7 @@ exports.sendOTP = async (req, res) => {
   });
 
   try {
-    log(`🔍 Looking up user with email: ${email}`);
     const user = await User.findOne({ email });
-    
     if (!user) {
       log(`❌ User not found for email: ${email}`);
       return res.status(404).json({ message: "If this email exists in our system, you'll receive an OTP" });
@@ -61,7 +47,7 @@ exports.sendOTP = async (req, res) => {
     const otpExpire = getExpiryTime(OTP_EXPIRY_MINUTES);
 
     log(`🔢 Generated OTP: ${otp}`);
-    log(`⏳ OTP will expire at: ${otpExpire}`);
+    log(`⏳ OTP expires at: ${otpExpire}`);
 
     user.otp = otp;
     user.otpExpire = otpExpire;
@@ -72,30 +58,31 @@ exports.sendOTP = async (req, res) => {
       to: user.email,
       subject: 'Your Password Reset OTP',
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #4a90e2;">Password Reset Request</h2>
-          <p>You requested to reset your password. Here is your OTP:</p>
-          <div style="background: #f5f7fa; padding: 20px; border-radius: 5px; text-align: center; margin: 20px 0;">
-            <h1 style="margin: 0; color: #333; letter-spacing: 5px;">${otp}</h1>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+          <h2 style="color:#4a90e2;">Password Reset Request</h2>
+          <p>Here is your OTP:</p>
+          <div style="background:#f5f7fa;padding:20px;border-radius:5px;text-align:center;">
+            <h1 style="letter-spacing:5px;">${otp}</h1>
           </div>
-          <p>This OTP will expire at ${otpExpire.toLocaleTimeString()} (${OTP_EXPIRY_MINUTES} minutes from now).</p>
-          <p>If you didn't request this, please ignore this email.</p>
+          <p>This OTP expires at ${otpExpire.toLocaleTimeString()} (${OTP_EXPIRY_MINUTES} minutes from now).</p>
+          <p>If you did not request this, please ignore.</p>
         </div>
       `
     };
 
-    log(`✉️ Attempting to send email to: ${user.email}`);
+    log(`✉️ Sending OTP email to ${user.email}`);
     await transporter.sendMail(mailOptions);
-    log(`✅ OTP email sent successfully to: ${user.email}`);
+    log(`✅ OTP email sent`);
 
-    res.status(200).json({ 
+    res.status(200).json({
       message: "If this email exists in our system, you'll receive an OTP",
-      serverTime: new Date() 
+      serverTime: new Date()
     });
+
   } catch (err) {
     log(`❌ Error in sendOTP: ${err.message}`);
     log(`🔄 Stack trace: ${err.stack}`);
-    res.status(500).json({ 
+    res.status(500).json({
       message: "Failed to process OTP request",
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
@@ -104,61 +91,51 @@ exports.sendOTP = async (req, res) => {
 
 // Verify OTP
 exports.verifyOTP = async (req, res) => {
-  const { email, otp } = req.body;
+  const email = req.body.email?.trim().toLowerCase();
+  const otp = req.body.otp?.trim();
   const currentTime = new Date();
 
-  log(`🔍 Starting OTP verification for email: ${email}`);
-  log(`⌚ Current server time: ${currentTime}`);
+  log(`🔍 Starting OTP verification for ${email}`);
+  log(`⌚ Current time: ${currentTime}`);
   log(`🔢 Received OTP: ${otp}`);
 
-  // Validate inputs
   if (!email || !otp || otp.length !== 6) {
-    log(`❌ Invalid verification request - email: ${email}, OTP length: ${otp?.length}`);
+    log(`❌ Invalid verification input - email: ${email}, otp length: ${otp?.length}`);
     return res.status(400).json({ message: "Please provide valid email and 6-digit OTP" });
   }
 
   try {
-    log(`🔎 Looking up user with email: ${email}`);
     const user = await User.findOne({ email });
-
     if (!user) {
-      log(`❌ User not found for email: ${email}`);
+      log(`❌ User not found for ${email}`);
       return res.status(400).json({ message: "Invalid OTP or OTP expired" });
     }
 
-    log(`📦 User OTP: ${user.otp}`);
-    log(`⏳ User OTP expiry: ${user.otpExpire}`);
-    log(`⏳ Current server time: ${currentTime}`);
+    log(`📦 Stored OTP: ${user.otp}`);
+    log(`⏳ Stored expiry: ${user.otpExpire}`);
 
-    // Check if OTP exists and matches
     if (!user.otp || user.otp !== otp) {
-      log(`❌ OTP mismatch - stored: ${user.otp}, received: ${otp}`);
+      log(`❌ OTP mismatch: stored=${user.otp}, received=${otp}`);
       return res.status(400).json({ message: "Invalid OTP" });
     }
 
-    // Check if OTP is expired
     if (user.otpExpire < currentTime) {
-      log(`⌛ OTP expired at ${user.otpExpire}, current time is ${currentTime}`);
-      return res.status(400).json({ 
+      log(`⌛ OTP expired at ${user.otpExpire}`);
+      return res.status(400).json({
         message: "OTP expired",
         expiredAt: user.otpExpire,
-        currentTime: currentTime
+        currentTime
       });
     }
 
-    // Generate reset token
     const resetToken = crypto.randomBytes(20).toString('hex');
     user.resetPasswordToken = resetToken;
     user.resetPasswordExpire = getExpiryTime(PASSWORD_RESET_EXPIRY_MINUTES);
     user.otp = undefined;
     user.otpExpire = undefined;
-    
     await user.save();
 
-    log(`🔑 Generated reset token: ${resetToken}`);
-    log(`⏳ Reset token expires at: ${user.resetPasswordExpire}`);
-    log(`✅ OTP verified successfully for email: ${email}`);
-
+    log(`✅ OTP verified. Generated reset token: ${resetToken}`);
     res.status(200).json({
       message: "OTP verified successfully",
       resetToken,
@@ -169,7 +146,7 @@ exports.verifyOTP = async (req, res) => {
   } catch (err) {
     log(`❌ Error in verifyOTP: ${err.message}`);
     log(`🔄 Stack trace: ${err.stack}`);
-    res.status(500).json({ 
+    res.status(500).json({
       message: "Failed to verify OTP",
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
@@ -181,18 +158,15 @@ exports.resetPassword = async (req, res) => {
   const { resetToken, newPassword, confirmPassword } = req.body;
   const currentTime = new Date();
 
-  log(`🔑 Starting password reset process`);
-  log(`⌚ Current server time: ${currentTime}`);
-  log(`🔑 Using reset token: ${resetToken}`);
+  log(`🔑 Starting password reset using token: ${resetToken}`);
 
-  // Validate inputs
   if (!resetToken || !newPassword || !confirmPassword) {
-    log(`❌ Missing required fields in reset request`);
+    log(`❌ Missing fields`);
     return res.status(400).json({ message: "Please provide all required fields" });
   }
 
   if (newPassword.length < 6) {
-    log(`❌ Password too short: ${newPassword.length} characters`);
+    log(`❌ Password too short`);
     return res.status(400).json({ message: "Password must be at least 6 characters" });
   }
 
@@ -202,7 +176,6 @@ exports.resetPassword = async (req, res) => {
   }
 
   try {
-    log(`🔎 Looking up user with reset token`);
     const user = await User.findOne({
       resetPasswordToken: resetToken,
       resetPasswordExpire: { $gt: currentTime }
@@ -210,25 +183,19 @@ exports.resetPassword = async (req, res) => {
 
     if (!user) {
       log(`❌ Invalid or expired reset token`);
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "Invalid or expired token",
         serverTime: currentTime
       });
     }
 
-    log(`👤 Found user: ${user.email}`);
-    log(`⏳ Token expires at: ${user.resetPasswordExpire}`);
-
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
+    user.password = await bcrypt.hash(newPassword, 10);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
     await user.save();
 
-    log(`✅ Password reset successfully for user: ${user.email}`);
-
-    res.status(200).json({ 
+    log(`✅ Password reset successful for ${user.email}`);
+    res.status(200).json({
       message: "Password reset successfully",
       serverTime: currentTime
     });
@@ -236,17 +203,17 @@ exports.resetPassword = async (req, res) => {
   } catch (err) {
     log(`❌ Error in resetPassword: ${err.message}`);
     log(`🔄 Stack trace: ${err.stack}`);
-    res.status(500).json({ 
+    res.status(500).json({
       message: "Failed to reset password",
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
 
-// Server time endpoint for debugging
+// Server time
 exports.getServerTime = async (req, res) => {
   const now = new Date();
-  log(`⏰ Server time request received`);
+  log(`⏰ Server time requested`);
   res.status(200).json({
     serverTime: now,
     isoString: now.toISOString(),

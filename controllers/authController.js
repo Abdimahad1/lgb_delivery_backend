@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const Profile = require('../models/Profile'); // Add this import
+const Profile = require('../models/Profile');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -7,7 +7,7 @@ exports.register = async (req, res) => {
   try {
     const { name, phone, email, password, role } = req.body;
 
-    // Validate input
+    // Validate
     if (!name || !phone || !email || !password || !role) {
       return res.status(400).json({
         success: false,
@@ -15,53 +15,57 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Check if email exists
-    const existingUser = await User.findOne({ email });
+    // Clean inputs
+    const cleanedEmail = email.trim().toLowerCase();
+    const cleanedRole = role.trim();
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: cleanedEmail });
     if (existingUser) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Email already exists" 
+        message: "Email already exists"
       });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
-    
+
     // Create new user
-    const newUser = new User({ 
-      name, 
-      phone, 
-      email, 
-      password: hashedPassword, 
-      role 
+    const newUser = new User({
+      name,
+      phone,
+      email: cleanedEmail,
+      password: hashedPassword,
+      role: cleanedRole
     });
-    
+
     await newUser.save();
 
-    // Create profile for the new user
+    // Create new profile
     const newProfile = new Profile({
       userId: newUser._id,
       name,
       phone,
-      email,
-      address: '', // Initialize empty fields
+      email: cleanedEmail,
+      address: '',
       notifications: {
         email: true,
         inApp: true,
         sms: true
       }
     });
-    
+
     await newProfile.save();
 
     // Generate token
     const token = jwt.sign(
-      { userId: newUser._id, role: newUser.role }, 
-      process.env.JWT_SECRET, 
+      { userId: newUser._id, role: newUser.role },
+      process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    return res.status(201).json({ 
+    return res.status(201).json({
       success: true,
       message: "User registered successfully",
       token,
@@ -74,10 +78,10 @@ exports.register = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Registration Error:", err);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: "Server error during registration", 
-      error: err.message 
+      message: "Server error during registration",
+      error: err.message
     });
   }
 };
@@ -86,37 +90,43 @@ exports.login = async (req, res) => {
   try {
     const { email, password, role } = req.body;
 
-    // Validate input
     if (!email || !password || !role) {
       return res.status(400).json({
         success: false,
-        message: "Email, password and role are required"
+        message: "Email, password, and role are required"
       });
     }
 
-    console.log("Login attempt for:", { email, role });
+    const cleanedEmail = email.trim().toLowerCase();
+    const cleanedRole = role.trim();
 
-    // Find user by email and role
-    const user = await User.findOne({ email, role });
+    console.log("🔐 Login attempt:", { cleanedEmail, cleanedRole });
+
+    const user = await User.findOne({
+      email: cleanedEmail,
+      role: new RegExp(`^${cleanedRole}$`, 'i')
+    });
+
+    console.log("🔎 Found user:", user);
+
     if (!user) {
-      console.error("Login failed: User not found or incorrect role");
-      return res.status(400).json({ 
+      console.error("❌ Login failed: User not found or incorrect role");
+      return res.status(400).json({
         success: false,
-        message: "Invalid credentials" 
+        message: "Invalid credentials"
       });
     }
 
-    // Compare passwords
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      console.error("Login failed: Password mismatch");
-      return res.status(400).json({ 
+      console.error("❌ Login failed: password mismatch");
+      return res.status(400).json({
         success: false,
-        message: "Invalid credentials" 
+        message: "Invalid credentials"
       });
     }
 
-    // Check if profile exists, create if not
+    // Ensure profile exists
     let profile = await Profile.findOne({ userId: user._id });
     if (!profile) {
       profile = new Profile({
@@ -124,7 +134,7 @@ exports.login = async (req, res) => {
         name: user.name,
         phone: user.phone,
         email: user.email,
-        address: '', // Initialize empty fields
+        address: '',
         notifications: {
           email: true,
           inApp: true,
@@ -134,10 +144,9 @@ exports.login = async (req, res) => {
       await profile.save();
     }
 
-    // Generate token
     const token = jwt.sign(
-      { userId: user._id, role: user.role }, 
-      process.env.JWT_SECRET, 
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -153,10 +162,10 @@ exports.login = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Server error during login:", err);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: "Server error during login", 
-      error: err.message 
+      message: "Server error during login",
+      error: err.message
     });
   }
 };
@@ -164,50 +173,44 @@ exports.login = async (req, res) => {
 exports.syncData = async (req, res) => {
   try {
     const { pendingSignups, pendingLogins } = req.body;
-    const results = {
-      signups: [],
-      logins: []
-    };
+    const results = { signups: [], logins: [] };
 
-    // Process pending signups
+    // Process signups
     if (pendingSignups && pendingSignups.length > 0) {
       for (const signup of pendingSignups) {
         try {
           const { name, phone, email, password, role } = signup;
-          
-          // Check if user already exists
-          const existingUser = await User.findOne({ email });
+
+          const cleanedEmail = email.trim().toLowerCase();
+          const cleanedRole = role.trim();
+
+          const existingUser = await User.findOne({ email: cleanedEmail });
           if (existingUser) {
             results.signups.push({
-              email,
+              email: cleanedEmail,
               status: 'skipped',
               message: 'User already exists'
             });
             continue;
           }
 
-          // Hash password
           const hashedPassword = await bcrypt.hash(password, 10);
-          
-          // Create new user
-          const newUser = new User({ 
-            name, 
-            phone, 
-            email, 
-            password: hashedPassword, 
-            role 
+
+          const newUser = new User({
+            name,
+            phone,
+            email: cleanedEmail,
+            password: hashedPassword,
+            role: cleanedRole
           });
           await newUser.save();
 
-          
-
-          // Create profile for the new user
           const newProfile = new Profile({
             userId: newUser._id,
             name,
             phone,
-            email,
-            address: '', // Initialize empty fields
+            email: cleanedEmail,
+            address: '',
             notifications: {
               email: true,
               inApp: true,
@@ -217,7 +220,7 @@ exports.syncData = async (req, res) => {
           await newProfile.save();
 
           results.signups.push({
-            email,
+            email: cleanedEmail,
             status: 'success',
             userId: newUser._id
           });
@@ -231,15 +234,19 @@ exports.syncData = async (req, res) => {
       }
     }
 
-    // Process pending logins (mostly for tracking purposes)
+    // Process logins
     if (pendingLogins && pendingLogins.length > 0) {
       for (const login of pendingLogins) {
         try {
-          const { email, role } = login;
-          const user = await User.findOne({ email, role });
-          
+          const cleanedEmail = login.email.trim().toLowerCase();
+          const cleanedRole = login.role.trim();
+
+          const user = await User.findOne({
+            email: cleanedEmail,
+            role: new RegExp(`^${cleanedRole}$`, 'i')
+          });
+
           if (user) {
-            // Ensure profile exists
             let profile = await Profile.findOne({ userId: user._id });
             if (!profile) {
               profile = new Profile({
@@ -247,7 +254,7 @@ exports.syncData = async (req, res) => {
                 name: user.name,
                 phone: user.phone,
                 email: user.email,
-                address: '', // Initialize empty fields
+                address: '',
                 notifications: {
                   email: true,
                   inApp: true,
@@ -256,15 +263,14 @@ exports.syncData = async (req, res) => {
               });
               await profile.save();
             }
-
             results.logins.push({
-              email,
+              email: cleanedEmail,
               status: 'success',
               userId: user._id
             });
           } else {
             results.logins.push({
-              email,
+              email: cleanedEmail,
               status: 'failed',
               message: 'User not found'
             });
@@ -286,10 +292,10 @@ exports.syncData = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Sync Error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: "Server error during sync", 
-      error: err.message 
+      message: "Server error during sync",
+      error: err.message
     });
   }
 };
