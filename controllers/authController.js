@@ -104,16 +104,22 @@ exports.login = async (req, res) => {
 
     const user = await User.findOne({
       email: cleanedEmail,
-      role: new RegExp(`^${cleanedRole}$`, 'i')
+      role: new RegExp(`^${cleanedRole}$`, 'i') // case-insensitive match
     });
-
-    console.log("🔎 Found user:", user);
 
     if (!user) {
       console.error("❌ Login failed: User not found or incorrect role");
       return res.status(400).json({
         success: false,
         message: "Invalid credentials"
+      });
+    }
+
+    // ✅ Check if user is suspended
+    if (user.status && user.status.toLowerCase() === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been suspended"
       });
     }
 
@@ -126,6 +132,14 @@ exports.login = async (req, res) => {
       });
     }
 
+    // ✅ Admin-only enforcement
+    if (cleanedRole.toLowerCase() === 'admin' && user.role.toLowerCase() !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: not an admin user"
+      });
+    }
+
     // Ensure profile exists
     let profile = await Profile.findOne({ userId: user._id });
     if (!profile) {
@@ -135,11 +149,7 @@ exports.login = async (req, res) => {
         phone: user.phone,
         email: user.email,
         address: '',
-        notifications: {
-          email: true,
-          inApp: true,
-          sms: true
-        }
+        notifications: { email: true, inApp: true, sms: true }
       });
       await profile.save();
     }
@@ -160,6 +170,7 @@ exports.login = async (req, res) => {
         email: user.email
       }
     });
+
   } catch (err) {
     console.error("❌ Server error during login:", err);
     return res.status(500).json({
@@ -169,6 +180,8 @@ exports.login = async (req, res) => {
     });
   }
 };
+
+
 
 exports.syncData = async (req, res) => {
   try {

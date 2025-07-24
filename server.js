@@ -13,15 +13,21 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const passwordResetRoutes = require('./routes/passwordResetRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+
+// ✅ CORS Configuration
+// ✅ CORS Configuration (Updated to include cache-control)
+const corsOptions = {
+  origin: 'http://localhost:5173', // specific origin is better than '*'
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'cache-control'],
+  credentials: true
+};
 
 // ✅ Initialize App
 const app = express();
+app.use(cors(corsOptions)); // ✅ Correct usage
 
-// ✅ CORS Configuration
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'PATCH']
-}));
 
 // ✅ Middleware
 app.use(express.json());
@@ -36,7 +42,7 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/password-reset', passwordResetRoutes);
-
+app.use('/api/admin', adminRoutes);
 // ✅ Connect to MongoDB and start server
 mongoose.connect(process.env.MONGO_URI, {
     useNewUrlParser: true,

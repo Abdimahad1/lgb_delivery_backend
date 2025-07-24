@@ -171,3 +171,21 @@ exports.getVendorOrdersWithDeliveryStatus = async (req, res) => {
     });
   }
 };
+
+// 🟢 Admin: Get all payments (read-only)
+exports.getAllPaymentsForAdmin = async (req, res) => {
+  try {
+    const transactions = await Payment.find()
+      .populate("userId", "name email") // show user name/email
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json({ success: true, transactions });
+  } catch (err) {
+    console.error("❌ Admin fetch error:", err.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch all payments",
+    });
+  }
+};
