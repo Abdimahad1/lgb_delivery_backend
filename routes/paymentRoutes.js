@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 
+// ✅ ADD THIS LINE
+const Payment = require('../models/Payment');
+
 const authMiddleware = require('../middlewares/authMiddleware');
 const {
   processPayment,
