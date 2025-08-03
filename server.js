@@ -18,23 +18,32 @@ const adminRoutes = require('./routes/adminRoutes');
 // ✅ Initialize App
 const app = express();
 
-// ✅ Updated CORS Configuration — Allow any localhost port
+// ✅ CORS Configuration
+const allowedOrigins = [
+  'https://lpg-delivery-admin-dashboard.onrender.com', // Your Render dashboard
+  /^http:\/\/localhost:\d+$/,                          // Any localhost port (Flutter, Remix dev, etc.)
+];
+
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, Postman)
-    if (!origin) return callback(null, true);
-    // Allow localhost with any port
-    if (/^http:\/\/localhost:\d+$/.test(origin)) {
+    if (!origin) return callback(null, true); // Allow Postman, mobile, etc.
+
+    // Check if origin is explicitly allowed or matches localhost port pattern
+    if (
+      allowedOrigins.includes(origin) ||
+      allowedOrigins.some(o => o instanceof RegExp && o.test(origin))
+    ) {
       return callback(null, true);
     }
-    // Reject other origins (you can allow production URL here)
+
+    console.warn(`❌ CORS blocked: ${origin}`);
     return callback(new Error('CORS policy does not allow this origin'), false);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'cache-control'],
-  credentials: true
+  credentials: true,
 };
-app.use(cors(corsOptions)); // ✅ Correct usage
+app.use(cors(corsOptions));
 
 // ✅ Middleware
 app.use(express.json());
@@ -53,14 +62,14 @@ app.use('/api/admin', adminRoutes);
 
 // ✅ Connect to MongoDB and Start Server
 mongoose.connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  })
-  .then(() => {
-    console.log("✅ MongoDB connected");
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => {
+  console.log("✅ MongoDB connected");
 
-    app.listen(process.env.PORT || 5000, '0.0.0.0', () => {
-      console.log(`🚀 Server running on http://0.0.0.0:${process.env.PORT || 5000}`);
-    });
-  })
-  .catch(err => console.error("❌ DB connection error:", err));
+  app.listen(process.env.PORT || 5000, '0.0.0.0', () => {
+    console.log(`🚀 Server running at http://0.0.0.0:${process.env.PORT || 5000}`);
+  });
+})
+.catch(err => console.error("❌ DB connection error:", err));
