@@ -15,19 +15,26 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const passwordResetRoutes = require('./routes/passwordResetRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
-// ✅ CORS Configuration
-// ✅ CORS Configuration (Updated to include cache-control)
+// ✅ Initialize App
+const app = express();
+
+// ✅ Updated CORS Configuration — Allow any localhost port
 const corsOptions = {
-  origin: 'http://localhost:5173', // specific origin is better than '*'
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    // Allow localhost with any port
+    if (/^http:\/\/localhost:\d+$/.test(origin)) {
+      return callback(null, true);
+    }
+    // Reject other origins (you can allow production URL here)
+    return callback(new Error('CORS policy does not allow this origin'), false);
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'cache-control'],
   credentials: true
 };
-
-// ✅ Initialize App
-const app = express();
 app.use(cors(corsOptions)); // ✅ Correct usage
-
 
 // ✅ Middleware
 app.use(express.json());
@@ -43,7 +50,8 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/password-reset', passwordResetRoutes);
 app.use('/api/admin', adminRoutes);
-// ✅ Connect to MongoDB and start server
+
+// ✅ Connect to MongoDB and Start Server
 mongoose.connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true
@@ -56,5 +64,3 @@ mongoose.connect(process.env.MONGO_URI, {
     });
   })
   .catch(err => console.error("❌ DB connection error:", err));
-
-  
