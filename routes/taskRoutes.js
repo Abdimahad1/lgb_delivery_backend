@@ -14,27 +14,23 @@ router.post('/assign', auth, async (req, res) => {
     if (!deliveryPersonId || !order || !order.product || !order.address || !order.orderId) {
       return res.status(400).json({ 
         success: false, 
-        message: "Missing required data. Please provide all necessary order details." 
+        message: "Missing required order information" 
       });
     }
 
-    // ✅ Check for existing active tasks (including same product)
+    // Check for active tasks (only Pending or Accepted status)
     const activeTasks = await AssignedTask.find({
       deliveryPersonId,
       status: { $in: ['Pending', 'Accepted'] }
-    }).lean();
+    });
 
-    // Check if already has this product assigned in active tasks
-    const hasSameProduct = activeTasks.some(task => 
-      task.product === order.product && 
-      task.orderId !== order.orderId
-    );
-
-    if (hasSameProduct) {
+    // Check if already has THIS EXACT order assigned (prevent duplicates)
+    const hasSameOrder = activeTasks.some(task => task.orderId === order.orderId);
+    if (hasSameOrder) {
       return res.status(409).json({
         success: false,
-        message: "This delivery person already has an active task for the same product",
-        code: "DUPLICATE_PRODUCT"
+        message: "This order is already assigned to the delivery person",
+        code: "DUPLICATE_ORDER"
       });
     }
 
@@ -42,36 +38,32 @@ router.post('/assign', auth, async (req, res) => {
     if (activeTasks.length > 0) {
       return res.status(409).json({
         success: false,
-        message: "This delivery person already has active tasks",
+        message: "Delivery person already has active tasks",
         code: "HAS_ACTIVE_TASKS",
-        activeTasks: activeTasks.map(task => ({
-          orderId: task.orderId,
-          product: task.product,
-          status: task.status
-        }))
+        data: {
+          activeTaskCount: activeTasks.length,
+          // Only include minimal task info
+          activeTasks: activeTasks.map(t => ({
+            product: t.product,
+            status: t.status,
+            assignedAt: t.assignedAt
+          }))
+        }
       });
     }
 
-    // ✅ Verify the order exists and get customer info
-    const payment = await Payment.findById(order.orderId).lean();
+    // Verify the order exists
+    const payment = await Payment.findById(order.orderId);
     if (!payment) {
       return res.status(404).json({
         success: false,
-        message: "Order not found",
+        message: "Order not found in system",
         code: "ORDER_NOT_FOUND"
       });
     }
 
-    if (!payment.userId) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer information missing from order",
-        code: "MISSING_CUSTOMER"
-      });
-    }
-
-    // ✅ Create the assigned task
-    const task = await AssignedTask.create({
+    // Create new task
+    const newTask = await AssignedTask.create({
       deliveryPersonId,
       vendorId: req.userId,
       orderId: order.orderId,
@@ -80,41 +72,25 @@ router.post('/assign', auth, async (req, res) => {
       address: order.address,
       customerId: payment.userId,
       status: 'Pending',
-      assignedAt: new Date(),
-      locationHistory: [{
-        timestamp: new Date(),
-        status: 'Assigned',
-        location: order.address
-      }]
+      assignedAt: new Date()
     });
 
-    // Emit real-time update
-    io.emit(`task-update-${deliveryPersonId}`, {
-      event: 'new-assignment',
-      task: task
-    });
-
-    res.status(200).json({ 
-      success: true, 
-      message: "Task assigned successfully", 
-      data: task,
-      assignedAt: task.assignedAt
+    // Return success response
+    return res.status(200).json({
+      success: true,
+      message: "Task assigned successfully",
+      data: {
+        taskId: newTask._id,
+        product: newTask.product,
+        assignedAt: newTask.assignedAt
+      }
     });
 
   } catch (err) {
-    console.error("❌ Assign task error:", err);
+    console.error("Assignment error:", err);
     
-    // Handle specific MongoDB errors
-    if (err.name === 'ValidationError') {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed: " + Object.values(err.errors).map(e => e.message).join(', '),
-        code: "VALIDATION_ERROR"
-      });
-    }
-
-    // Handle duplicate key errors
-    if (err.code === 11000) {
+    // Handle specific error cases
+    if (err.name === 'MongoError' && err.code === 11000) {
       return res.status(409).json({
         success: false,
         message: "This task assignment already exists",
@@ -122,10 +98,11 @@ router.post('/assign', auth, async (req, res) => {
       });
     }
 
-    res.status(500).json({ 
-      success: false, 
-      message: "Internal server error while assigning task",
-      code: "INTERNAL_ERROR"
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error during assignment",
+      code: "INTERNAL_ERROR",
+      systemMessage: err.message
     });
   }
 });
