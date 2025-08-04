@@ -108,23 +108,23 @@ exports.uploadProfileImage = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No image uploaded' });
     }
 
-    const relativePath = `/uploads/${req.file.filename}`; // ✅ only the path stored
+    const relativePath = `/uploads/${req.file.filename}`;
+    const fullUrl = `${req.protocol}://${req.get('host')}${relativePath}`;
 
+    // ✅ Store full URL instead of relative path
     const updated = await Profile.findOneAndUpdate(
       { userId: req.userId },
-      { profileImage: relativePath },
+      { profileImage: fullUrl },
       { new: true, upsert: true }
     );
-
-    // Optional: You can still include the full URL in the response for frontend use
-    const fullUrl = `${req.protocol}://${req.get('host')}${relativePath}`;
 
     res.status(200).json({
       success: true,
       message: 'Image uploaded',
-      imageUrl: fullUrl // useful for preview, but not stored
+      imageUrl: fullUrl // same as stored in DB
     });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Image upload failed', error: err.message });
   }
 };
+
